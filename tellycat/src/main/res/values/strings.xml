@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TellyCat</string>
+    <string name="service_description">A grumpy little cat that lives on your TV\'s home screen. It notices which app you open and which remote buttons you press, and walks off whenever an app is open. It never reads what is on screen and has no internet access.</string>
+</resources>

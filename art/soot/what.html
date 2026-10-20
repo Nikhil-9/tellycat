@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>what</title>
+<style>html,body{margin:0;padding:0;background:transparent}#cat{display:block;width:128px;height:128px}</style>
+</head><body>
+<div id="cat"></div>
+<script>
+// Soot — fuzzy grumpy black cat. Canvas 128x128, ground y=112, faces right. Animated on 2s (12 drawings/s) with boiling fur.
+(function () {
+  const S = 0.34, D = Math.PI / 180, FPS = 12, f = v => String(Math.round(v * 100) / 100);
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const C = { fur: '#121014', far: '#221e26', ear: '#e2502e', eye: '#f5c518', pupil: '#0d0c0e', nose: '#d4917f', line: '#9a919c',
+    whisk: '#d6cec8', mouth: '#5a1e28', tongue: '#e46d82', fang: '#ffffff', flameA: '#ff5a2a', flameB: '#ffc83a', fx: '#e2dad2',
+    z: '#9fd2ff', vein: '#ff4a3a', sweat: '#8fd3ff', blush: '#ff7f9e', star: '#ffd23f' };
+  let UID = 0;
+
+  // ---------- poses (big units: ground y=0, up is negative; x right) ----------
+  // legs: 4 x [x0,y0,x1,y1,width] — farBack, farFront, nearBack, nearFront (width<1 hides)
+  const SIT = { x: 0, y: 0, rot: 0, rcy: 0, sx: 1, sy: 1, air: 0,
+    bx: 0, by: -32, brx: 42, bry: 34, pear: 0.18, arch: 0, brot: 0, puff: 0, fuzz: 7,
+    hx: 4, hy: -74, hs: 1, hrot: 0, turn: 6, earRot: 8, earL: 0, earR: 0,
+    eyes: 'n', eyeL: '', eyeR: '', lid: 0.45, tilt: 10, lidBot: 0, lookX: 2, lookY: 1, pupil: 1, glint: 0, mouth: 'frown', whisk: 0, blush: 0,
+    tbx: -24, tby: -26, ta: -100, tcurl: 0.5, thook: -35, tl: 120, tw: 17, tamp: 0, tph: 0, tpuff: 0, tailFront: 0,
+    legs: [-20, -10, -24, -7, 0, -10, -16, -10, -7.5, 16, -30, -12, -34, -7, 0, 18, -16, 20, -7.5, 16], legsFront: 1,
+    fx: '', fxu: 0, fxa: 1, fxPer: 0.5, ft: 0 };
+  const STAND = { bx: -14, by: -36, brx: 44, bry: 25, pear: 0, hx: 40, hy: -66, hrot: 4, turn: 11, earRot: 12,
+    tbx: -50, tby: -44, ta: -112, tcurl: 1.2, thook: 45, tl: 108, lookX: 3, lookY: 0,
+    legs: [-40, -26, -40, -7.5, 13, 6, -26, 6, -7.5, 13, -32, -24, -32, -7.5, 14, 16, -24, 16, -7.5, 14], legsFront: 0 };
+  const AWAY = { turn: -6, lookX: -6, lookY: 0, hrot: -6, earRot: 18, lid: 0.5, tilt: 8,
+    tbx: -26, tby: -6, ta: 8, tcurl: -0.6, thook: -50, tl: 104, tailFront: 1 };
+  const CROUCH = { bx: -12, by: -26, brx: 46, bry: 22, pear: 0, hx: 42, hy: -52, hrot: 6, turn: 11, earRot: 24, lookX: 3, lookY: 0,
+    tbx: -52, tby: -30, ta: -172, tcurl: 0.5, thook: 30, tl: 108,
+    legs: [-40, -14, -44, -7.5, 13, 6, -14, 10, -7.5, 13, -32, -14, -36, -7.5, 14, 16, -14, 20, -7.5, 14], legsFront: 0 };
+  const AIR = { air: 1, bx: -12, by: -44, brx: 48, bry: 23, pear: 0, rot: -6, rcy: -40, hx: 46, hy: -70, turn: 11, earRot: 20, lookX: 3, lookY: 0,
+    tbx: -54, tby: -48, ta: 178, tcurl: 0, thook: -25, tl: 110,
+    legs: [-40, -34, -64, -26, 12, 6, -34, 30, -22, 12, -32, -34, -58, -20, 13, 16, -34, 40, -26, 13], legsFront: 0 };
+  const RUN_S = { air: 0.6, bx: -10, by: -40, brx: 52, bry: 21, pear: 0, hx: 52, hy: -62, hrot: 8, turn: 12, earRot: 44, lid: 0.4, tilt: 26, lookX: 3, lookY: 0,
+    tbx: -58, tby: -44, ta: 182, tcurl: 0, thook: -12, tl: 110, whisk: -0.6,
+    legs: [-46, -32, -74, -16, 12, 12, -32, 46, -14, 12, -38, -32, -68, -10, 13, 20, -32, 52, -20, 13], legsFront: 0 };
+  const RUN_G = { air: 0.1, bx: -14, by: -36, brx: 40, bry: 27, pear: 0, hx: 36, hy: -62, hrot: 4, turn: 12, earRot: 44, lid: 0.4, tilt: 26, lookX: 3, lookY: 0,
+    tbx: -50, tby: -42, ta: 188, tcurl: 0, thook: -12, tl: 110, whisk: -0.6,
+    legs: [-34, -26, -14, -8, 12, 4, -26, -14, -8, 12, -28, -24, -6, -8, 13, 12, -24, -6, -8, 13], legsFront: 0 };
+  const SKID = { bx: -18, by: -32, brx: 46, bry: 24, pear: 0, brot: -10, hx: 30, hy: -64, hrot: -14, turn: 6, earRot: 40, lid: 0.15, tilt: 0, pupil: 0.7, mouth: 'o', lookX: 3, lookY: 0,
+    tbx: -54, tby: -46, ta: -120, tcurl: 3, thook: 40, tl: 108, whisk: 0.6,
+    legs: [-44, -24, -40, -7.5, 13, 6, -26, 34, -7.5, 12, -36, -22, -30, -7.5, 14, 16, -24, 42, -7.5, 13], legsFront: 0 };
+  const FLAT = { bx: -6, by: -17, brx: 52, bry: 17, pear: 0, hx: 46, hy: -36, hrot: 12, turn: 10, earRot: 46, lookX: 2, lookY: 3,
+    lid: 0.6, tilt: -16, lidBot: 0.2, mouth: 'tongue', whisk: 1,
+    tbx: -52, tby: -10, ta: 178, tcurl: 0, thook: 8, tl: 110,
+    legs: [-40, -8, -66, -5, 11, 14, -8, 40, -5, 11, -34, -6, -62, -3, 12, 22, -6, 50, -3, 12], legsFront: 0 };
+  const PROP = { bx: -12, by: -22, brx: 48, bry: 21, pear: 0.1, hx: 34, hy: -56, hrot: 0, turn: 8, earRot: 30, lookX: 0, lookY: 0,
+    tbx: -54, tby: -10, ta: 176, tcurl: 0, thook: 10, tl: 108,
+    legs: [-40, -8, -64, -5, 0, 10, -16, 12, -7.5, 12, -34, -6, -60, -3, 0, 20, -16, 22, -7.5, 13], legsFront: 0 };
+  const CURL = { bx: -4, by: -27, brx: 50, bry: 27, pear: 0, hx: 30, hy: -36, hrot: 22, hs: 0.96, turn: 4, earRot: 22,
+    lid: 1, tilt: -6, mouth: 'none', whisk: 0.6, tbx: -36, tby: -6, ta: 4, tcurl: -1, thook: -55, tl: 112, tailFront: 1,
+    legs: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], legsFront: 0 };
+  const STRETCH = { bx: -12, by: -38, brx: 46, bry: 22, pear: 0, brot: 20, hx: 50, hy: -36, hrot: 14, turn: 10, earRot: 28, mouth: 'yawn', lid: 1, tilt: -6,
+    tbx: -50, tby: -58, ta: -78, tcurl: -1.5, thook: 70, tl: 112,
+    legs: [-44, -44, -46, -7.5, 13, 10, -24, 44, -7.5, 12, -36, -42, -38, -7.5, 14, 18, -22, 52, -7.5, 13], legsFront: 0 };
+  const STARTLE = { air: 0.8, y: -22, bx: -4, by: -50, brx: 40, bry: 30, pear: 0, arch: 22, puff: 0.7, hx: 22, hy: -84, turn: 4, earRot: -12,
+    lid: 0, pupil: 0.45, lookX: 0, lookY: 0, mouth: 'o', whisk: 1, tbx: -34, tby: -62, ta: -92, tcurl: 0, thook: 0, tl: 112, tpuff: 0.9,
+    legs: [-30, -28, -32, -6, 12, 12, -28, 14, -6, 12, -22, -28, -24, -6, 13, 22, -28, 24, -6, 13], legsFront: 0 };
+  const FURIOUS = { bx: -6, by: -44, brx: 44, bry: 30, pear: 0, arch: 16, puff: 0.4,
+    hx: 30, hy: -76, hrot: 6, turn: 9, earRot: 40, lid: 0.34, tilt: 30, pupil: 0.7, lookX: 3, lookY: 0, mouth: 'hiss', whisk: -1,
+    tbx: -40, tby: -54, ta: -92, tcurl: 0, thook: 0, tl: 118, tw: 19, tpuff: 0.7, fx: 'flames,vein',
+    legs: [-36, -24, -38, -7.5, 13, 8, -24, 10, -7.5, 13, -26, -22, -28, -7.5, 14, 22, -22, 25, -7.5, 14], legsFront: 0 };
+  const FALL = { air: 1, bx: 0, by: -42, brx: 27, bry: 34, pear: 0.1, hx: 0, hy: -86, hrot: 0, turn: 0, earRot: -6,
+    lid: 0, tilt: 0, pupil: 0.45, lookX: 0, lookY: -4, mouth: 'o', whisk: 0.8, tbx: 0, tby: -14, ta: 92, tcurl: -24, thook: -60, tl: 96, tw: 13, fx: 'scratch',
+    legs: [-16, -62, -24, -112, 11, 16, -62, 24, -112, 11, -14, -16, -30, 2, 12, 14, -16, 30, 2, 12], legsFront: 0 };
+  const POSES = { sit: {}, stand: STAND, away: AWAY, crouch: CROUCH, air: AIR, run_s: RUN_S, run_g: RUN_G, skid: SKID, flat: FLAT,
+    prop: PROP, curl: CURL, stretch: STRETCH, startle: STARTLE, furious: FURIOUS, fall: FALL };
+  const FACES = {
+    grumpy: {}, unimpressed: { lid: 0.62, tilt: 0, lookX: 0, lookY: 2, mouth: 'flat', turn: 2 },
+    irritated: { lid: 0.42, tilt: 24, pupil: 0.8, earRot: 34, whisk: -0.5, fx: 'vein' },
+    furious: { lid: 0.34, tilt: 30, pupil: 0.7, earRot: 40, mouth: 'hiss', whisk: -1, puff: 0.35, fx: 'vein' },
+    startled: { lid: 0, tilt: 0, pupil: 0.45, earRot: -10, mouth: 'o', whisk: 0.8, puff: 0.3 },
+    exhausted: { lid: 0.6, tilt: -16, lidBot: 0.18, lookY: 3, earRot: 40, mouth: 'tongue', whisk: 1 },
+    sleepy: { lid: 0.85, tilt: -6, earRot: 16, mouth: 'flat' },
+    soft: { lid: 0.3, tilt: -8, pupil: 1.5, glint: 1, mouth: 'w', earRot: -4, lookX: 0, lookY: 0, turn: 2, blush: 1 },
+    dizzy: { eyes: 'spiral', mouth: 'w', earRot: 34, earL: 20 },
+  };
+
+  function mix(a, b, u) { const o = {}; for (const k in a) { const x = a[k], y = b[k];
+    o[k] = Array.isArray(x) && Array.isArray(y) ? x.map((v, i) => v + (y[i] - v) * u) : (typeof x === 'number' && typeof y === 'number') ? x + (y - x) * u : (u < 0.5 ? x : y); } return o; }
+  const pose = (...parts) => Object.assign({}, SIT, ...parts.map(n => typeof n === 'string' ? (POSES[n] || FACES[n] || {}) : n));
+  const P = (...parts) => Object.assign({}, ...parts.map(n => typeof n === 'string' ? (POSES[n] || FACES[n] || {}) : n));
+  const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const snap = t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+  const accel = t => t * t;
+  function kf(t, frames) {
+    const full = x => Object.assign({}, SIT, x);
+    if (t <= frames[0][0]) return full(frames[0][1]);
+    for (let i = 1; i < frames.length; i++) { const [t1, f1, e] = frames[i], [t0, f0] = frames[i - 1];
+      if (t <= t1) return mix(full(f0), full(f1), (e || ease)(t1 === t0 ? 1 : (t - t0) / (t1 - t0))); }
+    return full(frames[frames.length - 1][1]);
+  }
+  const pulse = (t, t0, d) => { const u = (t - t0) / d; return u <= 0 || u >= 1 ? 0 : Math.sin(Math.PI * u); };
+  const win = (t, t0, d) => clamp((t - t0) / d, 0, 1);
+  const XS = [-40, 6, -32, 16];
+  function gait(p, ph, amt) {
+    p.legs = p.legs.slice(); const offs = [0, Math.PI, Math.PI, 0];
+    for (let i = 0; i < 4; i++) { const a = ph + offs[i]; p.legs[i * 5] = XS[i]; p.legs[i * 5 + 2] = XS[i] + 10 * amt * Math.sin(a); p.legs[i * 5 + 3] = -7.5 - 6 * amt * Math.max(0, Math.cos(a)); }
+    p.by += 1.8 * amt * Math.cos(2 * ph); p.hy += 1.6 * amt * Math.cos(2 * ph - 0.7); p.tamp = 8 * amt; p.tph = ph; p.earL += 4 * amt * Math.sin(2 * ph);
+    return p;
+  }
+
+  // ---------- drawing ----------
+  function spline(Pt, closed) {
+    const n = Pt.length, g = i => closed ? Pt[(i + n) % n] : Pt[Math.max(0, Math.min(n - 1, i))]; let d = '';
+    for (let i = 0; i < (closed ? n : n - 1); i++) { const p0 = g(i - 1), p1 = g(i), p2 = g(i + 1), p3 = g(i + 2);
+      d += 'C' + f(p1[0] + (p2[0] - p0[0]) / 6) + ',' + f(p1[1] + (p2[1] - p0[1]) / 6) + ' ' + f(p2[0] - (p3[0] - p1[0]) / 6) + ',' + f(p2[1] - (p3[1] - p1[1]) / 6) + ' ' + f(p2[0]) + ',' + f(p2[1]); }
+    return d;
+  }
+  const rnd = (i, fr) => { const x = Math.sin(i * 12.9898 + fr * 78.233) * 43758.5453; return x - Math.floor(x); };
+  function fur(Pt, fr, salt) {
+    const n = Pt.length; let d = 'M' + f(Pt[0][0]) + ',' + f(Pt[0][1]);
+    for (let i = 1; i < n; i += 2) { const q = Pt[i], e = Pt[(i + 1) % n], t = q[4] * (0.5 + 0.8 * rnd(i + salt, fr)), lean = (rnd(i + salt + 7, fr) - 0.5) * t * 0.9;
+      d += 'Q' + f(q[0] + q[2] * t * 1.9 - q[3] * lean) + ',' + f(q[1] + q[3] * t * 1.9 + q[2] * lean) + ' ' + f(e[0]) + ',' + f(e[1]); }
+    return d + 'Z';
+  }
+  function furBody(p, fr) {
+    const k = 1 + 0.22 * p.puff, N = 60, Pt = [], tuft = 4.2 * (1 + 1.4 * p.puff), cr = Math.cos(p.brot * D), sr = Math.sin(p.brot * D);
+    for (let i = 0; i < N; i++) { const th = i / N * 2 * Math.PI, s = Math.sin(th), c = Math.cos(th);
+      const rx = p.brx * k * (s < 0 ? 1 - p.pear * -s : 1), ry = p.bry * k;
+      let lx = c * rx, ly = s * ry;
+      const d = Math.atan2(Math.sin(th - 4.1), Math.cos(th - 4.1)); ly -= p.arch * Math.exp(-d * d / 0.35);
+      const x = p.bx + lx * cr - ly * sr, y = p.by + lx * sr + ly * cr;
+      const dx = x - p.bx, dy = y - p.by, m = Math.hypot(dx, dy) || 1;
+      Pt.push([x, Math.min(0, y), dx / m, dy / m, y >= -0.5 ? 0 : tuft]); }
+    return fur(Pt, fr, 11);
+  }
+  function furHead(p, fr) {
+    const N = 44, Pt = [], k = 1 + 0.1 * p.puff, tuft = 3.4 * (1 + p.puff);
+    for (let i = 0; i < N; i++) { const th = i / N * 2 * Math.PI;
+      const ch = 0.12 * (Math.exp(-Math.pow(th - 0.55, 2) / 0.12) + Math.exp(-Math.pow(th - (Math.PI - 0.55), 2) / 0.12));
+      const x = Math.cos(th) * 40 * k * (1 + ch), y = Math.sin(th) * 36 * k * (1 + ch * 0.6), m = Math.hypot(x, y) || 1;
+      Pt.push([x, y, x / m, y / m, tuft * (Math.sin(th) > 0.1 ? 1.5 : 1)]); }
+    return fur(Pt, fr, 31);
+  }
+  function tailPts(p) {
+    const N = 22, seg = p.tl / N, C0 = [[p.tbx, p.tby]]; let x = p.tbx, y = p.tby;
+    for (let i = 0; i < N; i++) { const u = i / N, a = (p.ta + i * p.tcurl * 14 / N + p.thook * u * u * u + p.tamp * Math.sin(p.tph - i * 0.32) * u) * D;
+      x += Math.cos(a) * seg; y += Math.sin(a) * seg; C0.push([x, y]); }
+    return C0;
+  }
+  function tailPath(p, fr) {
+    const C0 = tailPts(p), N = C0.length - 1, k = 1 + p.tpuff * 0.7, tuft = 2.6 * (1 + 1.6 * p.tpuff), L = [], R = [];
+    C0.forEach((c, i) => { const a = C0[Math.max(0, i - 1)], b = C0[Math.min(N, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], m = Math.hypot(dx, dy) || 1, nx = -dy / m, ny = dx / m;
+      const w = p.tw * k * (1 - 0.18 * i / N) / 2, tf = i < 2 ? 0 : tuft, tx = dx / m * 0.75, ty = dy / m * 0.75;
+      L.push([c[0] + nx * w, c[1] + ny * w, nx * 0.7 + tx, ny * 0.7 + ty, tf]); R.push([c[0] - nx * w, c[1] - ny * w, -nx * 0.7 + tx, -ny * 0.7 + ty, tf]); });
+    const tip = C0[N], pre = C0[N - 1], ta = Math.atan2(tip[1] - pre[1], tip[0] - pre[0]), w = p.tw * k * 0.82 / 2, cap = [];
+    for (let j = 1; j <= 5; j++) { const an = ta + Math.PI / 2 - j * Math.PI / 6; cap.push([tip[0] + Math.cos(an) * w, tip[1] + Math.sin(an) * w, Math.cos(an), Math.sin(an), tuft * 1.4]); }
+    const Pt = L.concat(cap, R.reverse()); if (Pt.length % 2) Pt.push(Pt[Pt.length - 1].slice(0, 4).concat([0]));
+    return fur(Pt, fr, 53);
+  }
+  const EAR = { L: [[-35, -14], [-31, -56], [-7, -36]], R: [[35, -14], [31, -56], [7, -36]] };
+  function earPath(pts, sh, sc) { const b = [(pts[0][0] + pts[2][0]) / 2, (pts[0][1] + pts[2][1]) / 2];
+    const q = pts.map(v => [b[0] + (v[0] - b[0]) * sc + sh, b[1] + (v[1] - b[1]) * sc]);
+    return { d: 'M' + f(q[0][0]) + ',' + f(q[0][1]) + 'L' + f(q[1][0]) + ',' + f(q[1][1]) + 'L' + f(q[2][0]) + ',' + f(q[2][1]) + 'Z', b: [b[0] + sh, b[1]], q }; }
+
+  function render(p, frame, scale, lite) {
+    const id = 'so' + (++UID), sc = scale || 1, seed = (frame % 4) * 5 + 2, fz = p.fuzz * (1 + 0.8 * p.puff);
+    let s = '<svg xmlns="http://www.w3.org/2000/svg" width="' + f(128 * sc) + '" height="' + f(128 * sc) + '" viewBox="0 0 128 128" style="display:block;overflow:visible">';
+    s += '<defs><radialGradient id="' + id + 'g"><stop offset="0" stop-color="#000" stop-opacity="0.6"/><stop offset="0.6" stop-color="#000" stop-opacity="0.35"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs>';
+    if (!lite) s += '<defs><filter id="' + id + 'z" x="-25%" y="-25%" width="150%" height="150%"><feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" seed="' + seed + '"/><feDisplacementMap in="SourceGraphic" scale="' + f(fz * 0.5) + '" xChannelSelector="R" yChannelSelector="G"/></filter>'
+      + '<filter id="' + id + 'b" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" seed="' + (seed + 1) + '"/><feDisplacementMap in="SourceGraphic" scale="6"/></filter>'
+      + '<filter id="' + id + 's" x="-50%" y="-300%" width="200%" height="700%"><feGaussianBlur stdDeviation="1.3"/></filter></defs>';
+    const lift = Math.max(p.air, clamp(-p.y / 40, 0, 1));
+    if (lift < 0.98) { const bw = (p.brx + 12) * S * Math.abs(p.sx) * (1 - 0.5 * lift), cx = 64 + (p.bx + p.x + 4) * S;
+      s += '<ellipse cx="' + f(cx) + '" cy="112.4" rx="' + f(bw) + '" ry="3" fill="url(#' + id + 'g)" opacity="' + f(1 - lift) + '"/>'; }
+    s += '<g transform="translate(64,112) scale(' + S + ')">';
+    s += fx(p, frame, id, 'bg');
+    s += '<g transform="translate(' + f(p.x) + ',' + f(p.y) + ') rotate(' + f(p.rot) + ' 0 ' + f(p.rcy) + ') scale(' + f(p.sx) + ',' + f(p.sy) + ')">';
+    s += fx(p, frame, id, 'back');
+    const legs = []; for (let i = 0; i < 4; i++) { const L = p.legs.slice(i * 5, i * 5 + 5); if (L[4] >= 1) legs.push({ L, far: i < 2 }); }
+    const leg = o => '<line x1="' + f(o.L[0]) + '" y1="' + f(o.L[1]) + '" x2="' + f(o.L[2]) + '" y2="' + f(o.L[3]) + '" stroke="' + (o.far && !p.legsFront ? C.far : C.fur) + '" stroke-width="' + f(o.L[4]) + '" stroke-linecap="round"/>';
+    const ht = 'translate(' + f(p.hx) + ',' + f(p.hy) + ') rotate(' + f(p.hrot) + ') scale(' + f(p.hs) + ')';
+    const eL = earPath(EAR.L, p.turn * 0.4, p.turn > 3 ? 0.92 : 1), eR = earPath(EAR.R, p.turn * 0.5, p.turn < -3 ? 0.92 : 1);
+    const rL = -(p.earRot + p.earL), rR = p.earRot + p.earR;
+    s += '<g' + (lite ? '' : ' filter="url(#' + id + 'z)"') + ' fill="' + C.fur + '">';
+    if (!p.legsFront) legs.filter(o => o.far).forEach(o => s += leg(o));
+    if (!p.tailFront) s += '<path fill="' + C.fur + '" d="' + tailPath(p, frame) + '"/>';
+    if (!p.legsFront) legs.filter(o => !o.far).forEach(o => s += leg(o));
+    s += '<path fill="' + C.fur + '" d="' + furBody(p, frame) + '"/>';
+    if (p.legsFront) legs.forEach(o => s += leg(o));
+    if (p.tailFront) s += '<path fill="' + C.fur + '" d="' + tailPath(p, frame) + '"/>';
+    s += '<g transform="' + ht + '"><path fill="' + C.fur + '" d="' + eL.d + '" transform="rotate(' + f(rL) + ' ' + f(eL.b[0]) + ' ' + f(eL.b[1]) + ')" stroke="' + C.fur + '" stroke-width="4" stroke-linejoin="round"/>'
+      + '<path fill="' + C.fur + '" d="' + eR.d + '" transform="rotate(' + f(rR) + ' ' + f(eR.b[0]) + ' ' + f(eR.b[1]) + ')" stroke="' + C.fur + '" stroke-width="4" stroke-linejoin="round"/>'
+      + '<path fill="' + C.fur + '" d="' + furHead(p, frame) + '"/></g>';
+    s += '</g>';
+    const inner = (e, r) => { const q = e.q, b = e.b, t = [[b[0] + (q[0][0] - b[0]) * 0.55, b[1] + (q[0][1] - b[1]) * 0.55 - 4], [b[0] + (q[1][0] - b[0]) * 0.72, b[1] + (q[1][1] - b[1]) * 0.72], [b[0] + (q[2][0] - b[0]) * 0.55, b[1] + (q[2][1] - b[1]) * 0.55 - 4]];
+      return '<path d="M' + t.map(v => f(v[0]) + ',' + f(v[1])).join('L') + 'Z" fill="' + C.ear + '" transform="rotate(' + f(r) + ' ' + f(b[0]) + ' ' + f(b[1]) + ')"/>'; };
+    s += '<g transform="' + ht + '">' + inner(eL, rL) + inner(eR, rR) + face(p, id) + '</g>';
+    s += fx(p, frame, id, 'front');
+    s += '</g>';
+    s += fx(p, frame, id, 'top');
+    s += '</g></svg>';
+    return s;
+  }
+  function face(p, id) {
+    let s = '';
+    [-1, 1].forEach(side => {
+      const st = (side < 0 ? p.eyeL : p.eyeR) || p.eyes, far = (p.turn > 3 && side < 0) || (p.turn < -3 && side > 0);
+      const ex = side * 14 + p.turn, ey = 2, rx = 12.5 * (far ? 0.88 : 1), ry = 12.5, cid = id + 'e' + (side + 1);
+      if (st === 'closed' || (st === 'n' && p.lid >= 0.95)) { s += '<path d="M' + f(ex - rx * 0.8) + ',' + f(ey + 1) + ' Q' + f(ex) + ',' + f(ey + (p.tilt < 0 ? -5 : 6)) + ' ' + f(ex + rx * 0.8) + ',' + f(ey + 1) + '" fill="none" stroke="' + C.line + '" stroke-width="2.6" stroke-linecap="round"/>'; return; }
+      if (st === 'happy') { s += '<path d="M' + f(ex - rx * 0.8) + ',' + f(ey + 3) + ' Q' + f(ex) + ',' + f(ey - 7) + ' ' + f(ex + rx * 0.8) + ',' + f(ey + 3) + '" fill="none" stroke="' + C.eye + '" stroke-width="3.4" stroke-linecap="round"/>'; return; }
+      if (st === 'x') { s += '<g stroke="' + C.eye + '" stroke-width="3.6" stroke-linecap="round"><line x1="' + f(ex - 8) + '" y1="' + f(ey - 8) + '" x2="' + f(ex + 8) + '" y2="' + f(ey + 8) + '"/><line x1="' + f(ex + 8) + '" y1="' + f(ey - 8) + '" x2="' + f(ex - 8) + '" y2="' + f(ey + 8) + '"/></g>'; return; }
+      if (st === 'spiral') { const r0 = (p.ft * 720 * side) % 360;
+        s += '<ellipse cx="' + f(ex) + '" cy="' + ey + '" rx="' + f(rx) + '" ry="' + ry + '" fill="' + C.eye + '"/><path transform="translate(' + f(ex) + ',' + ey + ') rotate(' + f(r0) + ')" d="M0,0 a1.6,1.6 0 1 1 3.2,0 a3.6,3.6 0 1 1 -7,0 a5.6,5.6 0 1 1 11,0 a7.6,7.6 0 1 1 -15,0" fill="none" stroke="' + C.pupil + '" stroke-width="1.8" stroke-linecap="round"/>'; return; }
+      s += '<clipPath id="' + cid + '"><ellipse cx="' + f(ex) + '" cy="' + ey + '" rx="' + f(rx) + '" ry="' + ry + '"/></clipPath>';
+      s += '<ellipse cx="' + f(ex) + '" cy="' + ey + '" rx="' + f(rx) + '" ry="' + ry + '" fill="' + C.eye + '"/>';
+      s += '<g clip-path="url(#' + cid + ')">';
+      const pr = 5.6 * p.pupil; s += '<circle cx="' + f(ex + p.lookX * 0.8) + '" cy="' + f(ey + p.lookY * 0.8) + '" r="' + f(pr) + '" fill="' + C.pupil + '"/>';
+      if (p.glint > 0.5) s += '<circle cx="' + f(ex + p.lookX * 0.8 + pr * 0.45) + '" cy="' + f(ey + p.lookY * 0.8 - pr * 0.45) + '" r="' + f(pr * 0.3) + '" fill="#fff"/>';
+      if (p.lid > 0.02) { const ly = ey - ry + 2 * ry * p.lid; s += '<rect x="' + f(ex - 24) + '" y="' + f(ly - 40) + '" width="48" height="40" fill="' + C.fur + '" transform="rotate(' + f(-side * p.tilt) + ' ' + f(ex) + ' ' + f(ly) + ')"/>'; }
+      if (p.lidBot > 0.02) { const by = ey + ry - 2 * ry * p.lidBot; s += '<rect x="' + f(ex - 24) + '" y="' + f(by) + '" width="48" height="30" fill="' + C.fur + '"/>'; }
+      s += '</g>';
+    });
+    const nx = p.turn * 1.15, ny = 15, my = 20;
+    if (p.blush > 0.05) s += '<g fill="' + C.blush + '" opacity="' + f(0.7 * p.blush) + '"><ellipse cx="' + f(nx - 26) + '" cy="16" rx="7" ry="3.4"/><ellipse cx="' + f(nx + 26) + '" cy="16" rx="7" ry="3.4"/></g>';
+    s += '<path d="M' + f(nx - 2.6) + ',' + ny + 'L' + f(nx + 2.6) + ',' + ny + 'L' + f(nx) + ',' + (ny + 2.6) + 'Z" fill="' + C.nose + '"/>';
+    const ln = ' fill="none" stroke="' + C.line + '" stroke-width="1.3" stroke-linecap="round"';
+    if (p.mouth === 'frown') s += '<path d="M' + f(nx - 4.5) + ',' + (my + 2) + ' Q' + f(nx) + ',' + (my - 1.6) + ' ' + f(nx + 4.5) + ',' + (my + 2) + '"' + ln + '/>';
+    if (p.mouth === 'flat') s += '<path d="M' + f(nx - 3.5) + ',' + (my + 0.5) + ' L' + f(nx + 3.5) + ',' + (my + 0.5) + '"' + ln + '/>';
+    if (p.mouth === 'w') s += '<path d="M' + f(nx - 5) + ',' + my + ' q2.5,3 5,0 q2.5,3 5,0"' + ln + '/>';
+    if (p.mouth === 'o') s += '<ellipse cx="' + f(nx) + '" cy="' + (my + 2) + '" rx="2.8" ry="3.8" fill="' + C.mouth + '"/>';
+    if (p.mouth === 'tongue') s += '<path d="M' + f(nx - 4) + ',' + my + ' Q' + f(nx) + ',' + (my + 2) + ' ' + f(nx + 4) + ',' + my + '"' + ln + '/><path d="M' + f(nx - 1) + ',' + (my + 1) + ' q0,6 3,6 q3,0 2.6,-6Z" fill="' + C.tongue + '"/>';
+    if (p.mouth === 'hiss') s += '<path d="M' + f(nx - 8) + ',' + (my - 1) + ' Q' + f(nx) + ',' + (my - 4) + ' ' + f(nx + 8) + ',' + (my - 1) + ' Q' + f(nx) + ',' + (my + 12) + ' ' + f(nx - 8) + ',' + (my - 1) + 'Z" fill="' + C.mouth + '"/><path d="M' + f(nx - 5.5) + ',' + (my - 1.6) + 'l1.4,4.4l1.4,-4Z M' + f(nx + 2.7) + ',' + (my - 1.6) + 'l1.4,4.4l1.4,-4Z" fill="' + C.fang + '"/>';
+    if (p.mouth === 'yawn') s += '<path d="M' + f(nx - 9) + ',' + (my - 2) + ' Q' + f(nx) + ',' + (my - 5) + ' ' + f(nx + 9) + ',' + (my - 2) + ' Q' + f(nx + 9) + ',' + (my + 16) + ' ' + f(nx) + ',' + (my + 16) + ' Q' + f(nx - 9) + ',' + (my + 16) + ' ' + f(nx - 9) + ',' + (my - 2) + 'Z" fill="' + C.mouth + '"/><ellipse cx="' + f(nx) + '" cy="' + (my + 11) + '" rx="5.5" ry="3.6" fill="' + C.tongue + '"/><path d="M' + f(nx - 6.5) + ',' + (my - 2.5) + 'l1.4,4.4l1.4,-4Z M' + f(nx + 3.7) + ',' + (my - 2.5) + 'l1.4,4.4l1.4,-4Z" fill="' + C.fang + '"/>';
+    let w = '<g stroke="' + C.whisk + '" stroke-width="1" stroke-linecap="round" opacity="0.85">';
+    [-1, 1].forEach(side => [-9, 0, 9].forEach((a, i) => { const ang = (side > 0 ? 0 : 180) + side * (a + p.whisk * 14), x0 = nx + side * 24, y0 = 15 + i * 3;
+      w += '<line x1="' + f(x0) + '" y1="' + f(y0) + '" x2="' + f(x0 + Math.cos(ang * D) * 30) + '" y2="' + f(y0 + Math.sin(ang * D) * 30) + '"/>'; }));
+    return s + w + '</g>';
+  }
+  // layers: bg (unrotated, behind) · back (with cat, behind) · front (with cat, over) · top (unrotated, over)
+  function fx(p, frame, id, layer) {
+    const list = (p.fx || '').split(',').filter(Boolean), t = p.ft, per = p.fxPer || 0.5, A = clamp(p.fxa, 0, 1); let s = '';
+    if (!list.length || A <= 0.01) return '';
+    const edge = ' stroke="' + C.fur + '" stroke-width="2.4" paint-order="stroke" stroke-linejoin="round"';
+    const cyc = off => (((t / per) + off) % 1 + 1) % 1;
+    const hx = p.hx + p.x, hy = p.hy + p.y;
+    list.forEach(k => {
+      if (layer === 'bg') {
+        if (k === 'flames') {
+          const T = [[-62, 70, 15, 0], [-40, 104, 18, 1], [-12, 124, 20, 2], [18, 112, 19, 3], [44, 88, 16, 4], [64, 62, 13, 5]];
+          let o = '', i = '';
+          T.forEach(([x, h, w, ph]) => { const hh = h * (0.82 + 0.18 * Math.abs(Math.sin(frame * 1.7 + ph * 2.3))), sw = 7 * Math.sin(frame * 1.3 + ph);
+            const fl = (H, W) => 'M' + f(x - W) + ',0 C' + f(x - W * 1.2) + ',' + f(-H * 0.45) + ' ' + f(x - W * 0.2 + sw) + ',' + f(-H * 0.7) + ' ' + f(x + sw * 1.4) + ',' + f(-H) + ' C' + f(x + W * 0.5 + sw) + ',' + f(-H * 0.6) + ' ' + f(x + W * 1.2) + ',' + f(-H * 0.4) + ' ' + f(x + W) + ',0Z';
+            o += fl(hh * A, w); i += fl(hh * 0.58 * A, w * 0.58); });
+          s += '<g' + (p.lite ? '' : ' filter="url(#' + id + 'b)"') + ' opacity="' + f(A) + '"><path d="' + o + '" fill="' + C.flameA + '"/><path d="' + i + '" fill="' + C.flameB + '"/></g>';
+        }
+        if (k === 'speed') [[-22, 54, 0], [-40, 40, 0.35], [-58, 60, 0.7], [-74, 34, 0.15]].forEach(([y, len, off]) => { const u = cyc(off), x1 = -62 - u * 50;
+          s += '<line x1="' + f(x1 - len) + '" y1="' + y + '" x2="' + f(x1) + '" y2="' + y + '" stroke="' + C.fx + '" stroke-width="3.4" stroke-linecap="round" opacity="' + f(0.85 * Math.sin(Math.PI * u) * A) + '"/>'; });
+      }
+      if (layer === 'top') {
+        if (k === 'dust') [[-1, 0, -60], [1, 0.5, 40], [-1, 0.33, -40]].forEach(([sd, off, x0]) => { const u = cyc(off);
+          s += '<circle cx="' + f(x0 + p.x + sd * u * 26) + '" cy="' + f(-6 - u * 14) + '" r="' + f(5 + u * 8) + '" fill="' + C.fx + '" opacity="' + f(0.85 * (1 - u) * A) + '"/>'; });
+        if (k === 'poof') { const u = clamp(p.fxu, 0, 1); [-1, 1].forEach(sd => [0, 1, 2].forEach(i => {
+          s += '<circle cx="' + f(sd * (30 + u * (40 + i * 14))) + '" cy="' + f(-6 - u * (6 + i * 7)) + '" r="' + f(6 + u * 9 - i * 1.5) + '" fill="' + C.fx + '" opacity="' + f((1 - u) * 0.9 * A) + '"/>'; })); }
+        if (k === 'stars') [0, 1, 2].forEach(i => { const a = 2 * Math.PI * (t / 0.75 + i / 3);
+          s += '<path transform="translate(' + f(hx + Math.cos(a) * 36) + ',' + f(hy - 56 + Math.sin(a) * 10) + ') scale(2.6)" d="M0,-3 L0.9,-0.9 L3,-0.9 L1.3,0.5 L1.9,2.7 L0,1.4 L-1.9,2.7 L-1.3,0.5 L-3,-0.9 L-0.9,-0.9Z" fill="' + C.star + '"' + edge + ' stroke-width="1" opacity="' + f(A) + '"/>'; });
+        if (k === 'sweat') { const u = cyc(0); s += '<path transform="translate(' + f(hx - 48) + ',' + f(hy - 26 + u * 16) + ') scale(2.4)" d="M0,-3 Q2.5,0.6 0,2.3 Q-2.5,0.6 0,-3Z" fill="' + C.sweat + '"' + edge + ' stroke-width="1" opacity="' + f((1 - 0.6 * u) * A) + '"/>'; }
+        if (k === 'bang' || k === 'q') s += '<text x="' + f(hx + 48) + '" y="' + f(hy - 44) + '" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="' + f(34 * (0.6 + 0.4 * A)) + '" fill="' + C.star + '"' + edge + ' opacity="' + f(A) + '">' + (k === 'q' ? '?' : '!') + '</text>';
+        if (k === 'steam') [-1, 1].forEach(sd => { const u = cyc(sd > 0 ? 0.5 : 0);
+          s += '<circle cx="' + f(hx + sd * (44 + u * 12)) + '" cy="' + f(hy - 40 - u * 26) + '" r="' + f(5 + u * 6) + '" fill="' + C.fx + '"' + edge + ' stroke-width="1.6" opacity="' + f(Math.sin(Math.PI * u) * A) + '"/>'; });
+        if (k === 'heart') { const u = clamp(p.fxu, 0, 1); s += '<path transform="translate(' + f(hx + 42) + ',' + f(hy - 54 - u * 18) + ') scale(' + f(2.4 * (0.7 + 0.3 * A)) + ')" d="M0,3 C-2,1.5 -3.6,0 -3.6,-1.6 C-3.6,-3 -2.6,-3.6 -1.8,-3.6 C-1,-3.6 -0.3,-3.1 0,-2.4 C0.3,-3.1 1,-3.6 1.8,-3.6 C2.6,-3.6 3.6,-3 3.6,-1.6 C3.6,0 2,1.5 0,3Z" fill="' + C.blush + '"' + edge + ' stroke-width="1" opacity="' + f(A) + '"/>'; }
+        if (k === 'scribble') { let d = 'M' + f(hx - 30) + ',' + f(hy - 62); for (let i = 0; i < 10; i++) d += ' l' + f(6 + rnd(i, frame) * 4) + ',' + f((i % 2 ? 1 : -1) * (6 + rnd(i + 3, frame) * 8));
+          s += '<path d="' + d + '" fill="none" stroke="' + C.vein + '" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" opacity="' + f(A) + '"/>'; }
+        if (k === 'zzz') [0, 1, 2].forEach(i => { const u = cyc(i / 3);
+          s += '<text x="' + f(hx + 30 + u * 20) + '" y="' + f(hy - 30 - u * 46) + '" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="' + f(14 + u * 12) + '" fill="' + C.z + '"' + edge + ' opacity="' + f(Math.sin(Math.PI * u) * A) + '">z</text>'; });
+        if (k === 'huff') { const u = clamp(p.fxu, 0, 1); s += '<g opacity="' + f((1 - u) * A) + '" fill="' + C.fx + '"' + edge + '><circle cx="' + f(hx + 30 + u * 22) + '" cy="' + f(hy + 18 - u * 4) + '" r="' + f(4 + u * 5) + '"/><circle cx="' + f(hx + 40 + u * 26) + '" cy="' + f(hy + 12 - u * 8) + '" r="' + f(3 + u * 4) + '"/></g>'; }
+        if (k === 'purr') [0, 1].forEach(i => { const u = cyc(i * 0.5), r = 8 + u * 10;
+          s += '<path d="M' + f(p.bx + 40 + p.x) + ',' + f(p.by - r + 10) + ' a' + f(r) + ',' + f(r) + ' 0 0 1 0,' + f(r * 1.4) + '" transform="translate(' + f(u * 8) + ',0)" fill="none" stroke="' + C.fx + '" stroke-width="2" stroke-linecap="round" opacity="' + f((1 - u) * 0.8 * A) + '"/>'; });
+      }
+      if (layer === 'front') {
+        if (k === 'vein') { const sc = 1 + 0.18 * (frame % 2); s += '<g opacity="' + f(A) + '" transform="translate(' + f(p.hx + 34) + ',' + f(p.hy - 44) + ') scale(' + sc + ')" fill="none" stroke="' + C.vein + '" stroke-width="3.4" stroke-linecap="round"><path d="M-7,-2.4 Q-2.4,-2.4 -2.4,-7"/><path d="M2.4,-7 Q2.4,-2.4 7,-2.4"/><path d="M7,2.4 Q2.4,2.4 2.4,7"/><path d="M-2.4,7 Q-2.4,2.4 -7,2.4"/></g>'; }
+        if (k === 'scratch') { const L = p.legs; [[L[2], L[3]], [L[7], L[8]]].forEach(([x, y]) => [-7, 0, 7].forEach((o, j) => {
+          const ph = ((frame * 0.5 + j * 0.33) % 1); s += '<line x1="' + f(x + o) + '" y1="' + f(y - 12 - ph * 30) + '" x2="' + f(x + o * 1.2) + '" y2="' + f(y - 40 - ph * 30) + '" stroke="' + C.fx + '" stroke-width="2.2" stroke-linecap="round" opacity="' + f(0.9 - ph * 0.6) + '"/>'; })); }
+        if (k === 'flick') { const T = tailPts(p), tp = T[T.length - 1], pr = T[T.length - 3], a = Math.atan2(tp[1] - pr[1], tp[0] - pr[0]);
+          [-0.8, 0, 0.8].forEach(o => { const b = a + o; s += '<line x1="' + f(tp[0] + Math.cos(b) * 14) + '" y1="' + f(tp[1] + Math.sin(b) * 14) + '" x2="' + f(tp[0] + Math.cos(b) * 24) + '" y2="' + f(tp[1] + Math.sin(b) * 24) + '" stroke="' + C.fx + '" stroke-width="2.6" stroke-linecap="round" opacity="' + f(A) + '"/>'; }); }
+      }
+    });
+    return s;
+  }
+
+  // ---------- clips ----------
+  const W = (o, ...more) => Object.assign({}, typeof o === 'string' ? POSES[o] : o, ...more.map(n => typeof n === 'string' ? (POSES[n] || FACES[n]) : n));
+  const CLIPS = {
+    idle_grumpy: { loop: true, duration: 4, note: 'Sits and tolerates you: tail-tip flicks, a blink, a glance away, then a big huff where it puffs up and deflates.', pose(t) {
+      const L = { lookX: -5, lookY: 0, turn: 2, hrot: -5 }, H = { puff: 0.25, sy: 1.05, lid: 1, earRot: 16 };
+      const p = kf(t, [[0, {}], [1.6, {}], [2.0, L], [2.8, L], [3.1, {}], [3.25, {}], [3.5, H], [3.85, {}], [4, {}]]);
+      p.tamp = 9; p.tph = Math.PI * t; p.thook += 30 * pulse(t, 0.9, 0.35) + 26 * pulse(t, 2.4, 0.3);
+      if (pulse(t, 1.15, 0.25) > 0.3) p.lid = 1;
+      p.earR += 20 * pulse(t, 2.15, 0.25); p.sy += 0.014 * Math.sin(Math.PI * t);
+      if (t > 3.55 && t < 3.95) { p.fx = 'huff'; p.fxu = (t - 3.55) / 0.4; }
+      return p; } },
+    idle_grumpy_2: { loop: true, duration: 5, note: 'Aloof: sits turned away, tail wrapped round its paws. One ear swivels to listen, eyes slide over to side-eye you, then it snaps its head away with a huff.', pose(t) {
+      const SE = W(AWAY, { earR: -18, lookX: 4, turn: -3 }), SNAP = W(AWAY, { hrot: -12, turn: -8, lookX: -7, lid: 0.6, earR: 0 });
+      const p = kf(t, [[0, AWAY], [1.4, AWAY], [1.7, W(AWAY, { earR: -18 })], [2.1, SE], [2.9, SE], [3.05, SNAP, snap], [3.6, SNAP], [4.4, AWAY], [5, AWAY]]);
+      p.sy += 0.012 * Math.sin(2 * Math.PI * t / 2.5); p.thook += 22 * pulse(t, 4.3, 0.3) + 14 * pulse(t, 0.6, 0.4);
+      if (pulse(t, 0.95, 0.22) > 0.3) p.lid = 1;
+      if (t > 3.05 && t < 3.5) { p.fx = 'huff'; p.fxu = (t - 3.05) / 0.45; p.hx -= 0; }
+      return p; } },
+    idle_irritated: { loop: true, duration: 2, note: 'Standing, ears out sideways, tail lashing hard, one front paw tapping. A ripple runs down its back.', pose(t) {
+      const p = pose(STAND, FACES.irritated); p.fxPer = 2;
+      p.ta = -112 + 26 * Math.sin(2 * Math.PI * t); p.thook = 45 + 30 * Math.sin(2 * Math.PI * t + 1); p.tamp = 6; p.tph = 4 * Math.PI * t;
+      const tap = pulse(t, 0.3, 0.25) + pulse(t, 1.3, 0.25); p.legs = p.legs.slice(); p.legs[18] -= 9 * tap; p.legs[17] += 4 * tap;
+      p.arch = 7 * pulse(t, 0.9, 0.5); p.earL = 10 * pulse(t, 1.6, 0.2); p.sy += 0.01 * Math.sin(2 * Math.PI * t);
+      return p; } },
+    idle_furious: { loop: true, duration: 1.5, note: 'Arched, puffed, hissing, trembling on every drawing, with hand-drawn flames behind it.', pose(t) {
+      const p = pose(FURIOUS), fr = Math.round(t * FPS);
+      p.x = fr % 2 ? 1.4 : -1.4; p.puff += 0.08 * Math.sin(2 * Math.PI * t / 0.75); p.tamp = 4; p.tph = 2 * Math.PI * t / 0.5;
+      p.earL = fr % 3 === 0 ? 4 : 0; p.sy += 0.02 * Math.sin(2 * Math.PI * t / 0.75);
+      return p; } },
+    walk: { loop: true, duration: 1, note: 'Stubby trot on the spot. The body bobs, the head lags behind, the tail is up with a hooked tip.', pose(t) {
+      return gait(pose(STAND), 2 * Math.PI * t, 1); } },
+    run: { loop: true, duration: 0.5, note: 'Full gallop: the body bunches and stretches, ears pinned back, tail straight out, speed lines and dust.', pose(t) {
+      const u = 0.5 - 0.5 * Math.cos(2 * Math.PI * t / 0.5), p = mix(pose(RUN_G), pose(RUN_S), u);
+      p.y = -8 * Math.sin(Math.PI * u) - 2; p.fx = 'speed,dust'; p.fxPer = 0.5; p.tamp = 5; p.tph = 2 * Math.PI * t / 0.5; p.earL = 6 * u;
+      return p; } },
+    skid_stop: { loop: false, duration: 0.75, note: 'From run: front legs slam forward, leans back, kicks up dust, then stands there annoyed.', pose(t) {
+      const END = W(STAND, FACES.irritated, { fx: '' });
+      const p = kf(t, [[0, RUN_S], [0.17, SKID, snap], [0.42, SKID], [0.75, END]]);
+      if (t < 0.6) { p.fx = 'poof'; p.fxu = win(t, 0.12, 0.5); }
+      return p; } },
+    hop_takeoff: { loop: false, duration: 0.33, note: 'From sitting: crouches, squashes, springs. Ends in the hop_air pose.', pose(t) {
+      return kf(t, [[0, {}], [0.17, W(CROUCH, { sy: 0.86, sx: 1.08 })], [0.33, W(AIR, { sy: 1.08, sx: 0.95 }), snap]]); } },
+    hop_air: { loop: true, duration: 0.5, note: 'Mid-air, reaching forward, still frowning. Loops while the app carries it.', pose(t) {
+      const p = pose(AIR), a = 2 * Math.PI * t / 0.5; p.tamp = 10; p.tph = a; p.legs = p.legs.slice();
+      p.legs[3] += 3 * Math.sin(a); p.legs[8] -= 3 * Math.sin(a); p.legs[13] += 3 * Math.sin(a); p.legs[18] -= 3 * Math.sin(a);
+      p.earL = 6 * Math.sin(a); p.earR = 6 * Math.sin(a + 1); p.by += 1.2 * Math.sin(a);
+      return p; } },
+    hop_land: { loop: false, duration: 0.42, note: 'Lands with a squash and a puff of dust, settles back to sitting.', pose(t) {
+      const p = kf(t, [[0, AIR], [0.08, W(CROUCH, { sy: 0.8, sx: 1.16 }), accel], [0.25, CROUCH], [0.42, {}]]);
+      if (t > 0.04) { p.fx = 'poof'; p.fxu = win(t, 0.06, 0.34); }
+      return p; } },
+    fall_air: { loop: true, duration: 0.5, note: 'Facing out, scrabbling at nothing, scratch marks streaming, huge eyes with tiny pupils.', pose(t) {
+      const p = pose(FALL), a = 2 * Math.PI * t / 0.5; p.legs = p.legs.slice();
+      p.legs[3] += 7 * Math.sin(a); p.legs[8] -= 7 * Math.sin(a); p.legs[2] += 3 * Math.cos(a); p.legs[7] -= 3 * Math.cos(a);
+      p.legs[13] += 3 * Math.sin(a); p.legs[18] -= 3 * Math.sin(a);
+      p.hrot = 4 * Math.sin(a); p.tph = a; p.tamp = 10; p.sx = 1 + 0.03 * Math.sin(2 * a);
+      return p; } },
+    fall_crash: { loop: false, duration: 0.5, note: 'Impact: flattens into a pancake with X eyes, bounces once, ends propped up and dazed.', pose(t) {
+      const PAN = W(FLAT, { sy: 0.66, sx: 1.22, eyes: 'x', mouth: 'o', earRot: 70, lidBot: 0, whisk: 1 });
+      const p = kf(t, [[0, FALL], [0.08, PAN, accel], [0.25, W(FLAT, { sy: 1.08, sx: 0.95, eyes: 'x', mouth: 'o', lidBot: 0 })], [0.5, W(PROP, { eyes: 'x', mouth: 'o' })]]);
+      p.fx = t > 0.08 ? 'poof,stars' : ''; p.fxu = win(t, 0.08, 0.4);
+      return p; } },
+    dizzy: { loop: true, duration: 1.5, note: 'Propped up, spiral eyes, head circling, stars orbiting.', pose(t) {
+      const p = pose(PROP, FACES.dizzy), a = 2 * Math.PI * t / 0.75;
+      p.hx += 4 * Math.cos(a); p.hy += 3 * Math.sin(a); p.hrot = 9 * Math.sin(a); p.bx += 1.5 * Math.cos(a); p.fx = 'stars'; p.tamp = 4; p.tph = a;
+      return p; } },
+    recover_angry: { loop: false, duration: 1.6, note: 'Shakes off the daze, gets up, glares at you with steam and a stomp, then sits down in a huff.', pose(t) {
+      const MAD = W(STAND, FACES.furious, { fx: '', puff: 0.3, lookX: 0, turn: 6 });
+      const p = kf(t, [[0, W(PROP, FACES.dizzy)], [0.3, W(PROP, { lid: 1 })], [0.6, W(STAND, { puff: 0.35, lid: 1 })], [0.8, MAD, snap], [1.25, MAD], [1.6, {}]]);
+      if (t > 0.3 && t < 0.62) { p.hrot += 14 * Math.sin((t - 0.3) * 40); p.x = 2 * Math.sin((t - 0.3) * 40); }
+      if (t > 0.8 && t < 1.3) { p.fx = 'vein,steam'; p.fxPer = 0.5; const st = pulse(t, 0.9, 0.16) + pulse(t, 1.08, 0.16); p.legs = p.legs.slice(); p.legs[18] -= 10 * st; p.legs[16] -= 8 * st; p.y = 1.5 * st; }
+      if (t < 0.3) p.fx = 'stars';
+      return p; } },
+    exhausted: { loop: true, duration: 1.5, note: 'Flopped flat, legs splayed, tongue out, panting, sweat dripping.', pose(t) {
+      const p = pose(FLAT), a = 2 * Math.PI * t / 0.75; p.sy += 0.05 * Math.sin(a); p.sx -= 0.015 * Math.sin(a); p.hy += 1.5 * Math.sin(a);
+      p.fx = 'sweat'; p.fxPer = 1.5; p.tamp = 3; p.tph = 2 * Math.PI * t / 1.5; p.earR = 8 * pulse(t, 1.0, 0.25);
+      return p; } },
+    tantrum: { loop: false, duration: 2.2, note: 'Pops up from exhausted and stomps both front paws, puffed and hissing with a scribble of rage. Then one big huff and it sits with its back to you.', pose(t) {
+      const TT = W(FURIOUS, { fx: '', puff: 0.55, tpuff: 0.9 });
+      const p = kf(t, [[0, FLAT], [0.25, TT, snap], [1.45, TT], [1.75, W(STAND, { sy: 1.05, lid: 1, puff: 0.2 })], [2.2, W(AWAY, { lid: 0.6 })]]);
+      if (t > 0.25 && t < 1.45) { const k = Math.floor((t - 0.25) / (1 / 6)), up = Math.sin(Math.PI * (((t - 0.25) * 6) % 1)); p.legs = p.legs.slice();
+        const li = k % 2 ? 15 : 5; p.legs[li + 3] -= 14 * up; p.legs[li + 2] += 6 * up; p.legs[li + 1] -= 4 * up; p.y = -2 * up; p.x = (k % 2 ? 1 : -1) * 1.5;
+        p.fx = 'scribble,vein'; p.ta += 20 * Math.sin(t * 30); }
+      if (t > 1.6 && t < 2.1) { p.fx = 'huff'; p.fxu = win(t, 1.6, 0.5); }
+      return p; } },
+    react_ok: { loop: false, duration: 1.2, note: 'Unimpressed: a slow half-blink, an ear flick and a tiny huff. That is all you get.', pose(t) {
+      const U = FACES.unimpressed;
+      const p = kf(t, [[0, {}], [0.25, U], [0.45, W(U, { lid: 0.85 })], [0.7, U], [1.2, {}]]);
+      p.earR += 16 * pulse(t, 0.55, 0.2); p.thook += 26 * pulse(t, 0.4, 0.3);
+      if (t > 0.6 && t < 1.0) { p.fx = 'huff'; p.fxu = win(t, 0.6, 0.4); }
+      return p; } },
+    react_back: { loop: false, duration: 1.4, note: 'Jumps straight up, puffed and stiff-legged, with a "!". Lands, then glares at you, irritated.', pose(t) {
+      const GL = W(FACES.irritated, { lookX: 0, turn: 4, fx: '' });
+      const p = kf(t, [[0, {}], [0.08, { sy: 0.9, sx: 1.06 }], [0.25, STARTLE, snap], [0.42, W(STARTLE, { y: 0, air: 0 }), accel], [0.6, W(GL, { puff: 0.3 })], [1.1, GL], [1.4, {}]]);
+      if (t > 0.1 && t < 0.6) { p.fx = 'bang'; p.fxa = clamp((t - 0.1) / 0.1, 0, 1); }
+      if (t > 0.6 && t < 1.15) { p.fx = 'vein'; }
+      return p; } },
+    leave_huff: { loop: false, duration: 2, note: 'Glares at you, huffs, stands up and stalks off with its tail high, glancing back. Ends in step with walk.', pose(t) {
+      const GL = { lookX: 0, turn: 4, lid: 0.38, tilt: 26, earRot: 30 }, BACK = W(STAND, { turn: -4, hrot: -8, lookX: -6, lid: 0.42, tilt: 22, ta: -96, thook: 80 });
+      const p = kf(t, [[0, {}], [0.3, GL], [0.65, W(GL, { sy: 1.05, puff: 0.2 })], [0.95, BACK], [1.6, BACK], [2, STAND]]);
+      if (t > 0.5 && t < 0.95) { p.fx = 'huff'; p.fxu = win(t, 0.5, 0.45); }
+      if (t > 1.0) gait(p, 2 * Math.PI * (t - 1), win(t, 1, 0.2)); else p.thook += 30 * pulse(t, 0.7, 0.3);
+      return p; } },
+    fall_asleep: { loop: false, duration: 3, note: 'A huge yawn, then it lowers into a loaf and curls up, eyes closing. Ends in the sleep pose.', pose(t) {
+      const Y = { mouth: 'yawn', lid: 1, hy: -80, hrot: -12, earRot: 30, sy: 1.04 };
+      const LOAF = W(CURL, { hx: 34, hy: -48, hrot: 4, lid: 0.85, tilt: -6, mouth: 'flat', tailFront: 1 });
+      return kf(t, [[0, {}], [0.6, Y], [1.1, Y], [1.4, FACES.sleepy], [2.1, LOAF], [2.7, CURL], [3, CURL]]); } },
+    sleep: { loop: true, duration: 4, note: 'Curled into a donut, slow breathing, floating z\'s, an ear twitch while it dreams.', pose(t) {
+      const p = pose(CURL); p.sy += 0.035 * Math.sin(2 * Math.PI * t / 4); p.sx -= 0.012 * Math.sin(2 * Math.PI * t / 4);
+      p.earL += 18 * pulse(t, 2.6, 0.25); p.thook -= 16 * pulse(t, 1.2, 0.5); p.fx = 'zzz'; p.fxPer = 4;
+      return p; } },
+    wake_grumpy: { loop: false, duration: 2.6, note: 'One eye cracks open and glares. The head comes up, a long stretch with a yawn, then it sits, grumpy.', pose(t) {
+      const ONE = W(CURL, { eyeL: 'closed', lid: 0.5, tilt: 20, lookX: 4, lookY: 0, earR: -10 });
+      const UP = W(CURL, { hx: 34, hy: -50, hrot: 2, lid: 0.45, tilt: 20, mouth: 'frown' });
+      return kf(t, [[0, CURL], [0.35, CURL], [0.5, ONE], [1.0, ONE], [1.3, UP], [1.8, STRETCH], [2.15, W(STRETCH, { sx: 1.05 })], [2.6, {}]]); } },
+    notice: { loop: false, duration: 1.2, note: 'You switched apps: ears perk forward, eyes go round, head lifts. Then "meh" and back to grumpy.', pose(t) {
+      const N = { earRot: -8, lid: 0, pupil: 1.35, hy: -80, lookX: 4, lookY: -1, turn: 8, whisk: 0.6 };
+      const p = kf(t, [[0, {}], [0.12, { sy: 0.97 }], [0.32, N, snap], [0.8, N], [1.2, {}]]);
+      if (t > 0.3 && t < 0.85) { p.fx = 'bang'; p.fxa = clamp((t - 0.3) / 0.1, 0, 1) * (1 - win(t, 0.7, 0.15)); }
+      return p; } },
+    what: { loop: false, duration: 1.4, note: 'Pressed a key that does nothing: big head tilt, one ear down, a "?".', pose(t) {
+      const Q = { hrot: -18, earL: -10, earR: 30, lid: 0.15, tilt: 0, lookX: 0, lookY: 0, mouth: 'flat', turn: 3 };
+      const p = kf(t, [[0, {}], [0.3, Q, snap], [1.05, Q], [1.4, {}]]);
+      if (t > 0.3 && t < 1.15) { p.fx = 'q'; p.fxa = clamp((t - 0.3) / 0.1, 0, 1) * (1 - win(t, 1.0, 0.15)); }
+      return p; } },
+    swept_tumble: { loop: false, duration: 1.5, note: 'Swept off its feet: rolls over in a ball, lands sprawled, then sits up furious.', pose(t) {
+      const BALL = W(CURL, { lid: 0, eyes: 'x', mouth: 'o', tailFront: 0, rcy: -30 });
+      const p = kf(t, [[0, {}], [0.12, W(STARTLE, { y: 0, air: 0 })], [0.25, W(BALL, { y: -14, rot: -90 })], [0.6, W(BALL, { y: -18, rot: -300 }), (u => u)], [0.8, W(FLAT, { eyes: 'x', mouth: 'o', rot: -360, rcy: -30 })], [1.05, W(PROP, FACES.furious, { fx: '', rot: -360, rcy: -30 })], [1.5, W(FACES.irritated, { rot: -360, rcy: -30, fx: '' })]]);
+      if (p.rot <= -359) p.rot = 0;
+      if (t > 0.75 && t < 1.15) { p.fx = 'poof'; p.fxu = win(t, 0.75, 0.4); }
+      if (t > 1.05) p.fx = 'vein';
+      return p; } },
+    calm_down: { loop: false, duration: 3, note: 'From furious: the flames die down, the fur smooths out, a big sigh, and it sits back down, merely grumpy.', pose(t) {
+      const p = kf(t, [[0, FURIOUS], [0.9, W(FURIOUS, { puff: 0.15, tpuff: 0.3, lid: 0.45, mouth: 'frown', tilt: 18 })], [1.4, W(STAND, { lid: 0.6, tilt: 10 })], [1.7, W(STAND, { sy: 1.06, lid: 1 })], [2.1, W(STAND, { sy: 0.95, lid: 1 })], [2.6, {}], [3, {}]]);
+      p.fx = t < 1.1 ? 'flames' : ''; p.fxa = 1 - win(t, 0.1, 1);
+      if (t < 0.9) { const fr = Math.round(t * FPS); p.x = (fr % 2 ? 1 : -1) * 1.2 * (1 - t / 0.9); }
+      if (t > 1.9 && t < 2.5) { p.fx = 'huff'; p.fxu = win(t, 1.9, 0.6); p.fxa = 1; }
+      return p; } },
+    soft_moment: { loop: false, duration: 3.4, note: 'Rare: a slow blink, a purr, a blush and a tiny heart. Then it catches itself, looks away and frowns.', pose(t) {
+      const SOFT = FACES.soft, OOPS = { lid: 0, tilt: 0, pupil: 0.6, lookX: 0, lookY: 0, earRot: -6, mouth: 'o', turn: 4, blush: 0.6 };
+      const p = kf(t, [[0, {}], [0.5, W(SOFT, { glint: 0, blush: 0 })], [0.9, W(SOFT, { lid: 1, blush: 0.5 })], [1.4, SOFT], [2.3, SOFT], [2.45, OOPS, snap], [2.75, W(AWAY, { tailFront: 0 })], [3.4, {}]]);
+      if (t > 1.0 && t < 2.35) { p.fx = 'purr,heart'; p.fxu = win(t, 1.4, 0.9); p.fxa = clamp((t - 1.2) / 0.2, 0, 1); p.fxPer = 0.5; const fr = Math.round(t * FPS); p.x = fr % 2 ? 0.6 : -0.6; }
+      return p; } },
+  };
+  const ORDER = ['idle_grumpy', 'idle_grumpy_2', 'idle_irritated', 'idle_furious', 'walk', 'run', 'skid_stop', 'hop_takeoff', 'hop_air', 'hop_land',
+    'fall_air', 'fall_crash', 'dizzy', 'recover_angry', 'exhausted', 'tantrum', 'react_ok', 'react_back', 'leave_huff', 'fall_asleep', 'sleep', 'wake_grumpy',
+    'notice', 'what', 'swept_tumble', 'calm_down', 'soft_moment'];
+  function frameOf(clip, t) { const c = CLIPS[clip], d = c.duration, tt = c.loop ? ((t % d) + d) % d : clamp(t, 0, d);
+    let fr = Math.floor(tt * FPS + 1e-6); if (!c.loop) fr = Math.min(fr, Math.round(d * FPS));
+    const time = Math.min(fr / FPS, d), p = c.pose(time); p.ft = time; return { p, fr }; }
+  function renderClip(clip, t, scale, lite) { const { p, fr } = frameOf(clip, t); p.lite = lite; return render(p, fr, scale, lite); }
+  function renderPose(names, scale, frame) { return render(pose(...[].concat(names)), frame || 0, scale); }
+
+  window.Soot = { FPS, C, POSES, FACES, CLIPS, ORDER, pose, render, renderClip, renderPose };
+})();
+
+// what: PLAYS ONCE, 1.4s, 12 drawings/s (18 unique drawings). Pressed a key that does nothing: big head tilt, one ear down, a "?".
+(function(){
+  var NAME="what", DURATION=1.4, LOOP=false, FPS=12, host=document.getElementById('cat');
+  function draw(t){ var tmp=document.createElement('div'); tmp.innerHTML=window.Soot.renderClip(NAME,t,1,true); var svg=tmp.firstChild; svg.setAttribute('id','cat'); var old=document.getElementById('cat'); old.parentNode.replaceChild(svg,old); return t; }
+  window.CAT_ANIM={name:NAME,duration:DURATION,loop:LOOP,fps:FPS,frameCount:Math.round(DURATION*FPS)+(LOOP?0:1),
+    renderFrame:function(t){ return draw(Math.max(0, LOOP ? t : Math.min(DURATION, t))); },
+    renderFrameIndex:function(i){ return draw(i/FPS); }};
+  var q=new URLSearchParams(location.search);
+  if(q.has('t')){draw(+q.get('t'));return;}
+  if(q.has('frame')){draw(+q.get('frame')/FPS);return;}
+  draw(0); if(q.has('paused')) return;
+  var start=null, last=-1;
+  function tick(now){ if(start===null)start=now; var t=(now-start)/1000;
+    if(!LOOP){ if(t>DURATION+0.8){start=now;t=0;} t=Math.min(t,DURATION); }
+    var fr=Math.floor((LOOP?t%DURATION:t)*FPS); if(fr!==last){last=fr; draw(t);} requestAnimationFrame(tick); }
+  requestAnimationFrame(tick);
+})();
+</script>
+</body></html>

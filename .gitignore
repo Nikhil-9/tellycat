@@ -1,0 +1,21 @@
+# build output
+.gradle/
+build/
+*/build/
+*.apk
+*.aab
+*.idsig
+
+# local machine
+local.properties
+.idea/
+*.iml
+.DS_Store
+
+# signing keys never belong in the repo
+*.keystore
+*.jks
+keystore.properties
+
+# render-pipeline scratch
+tools/frames/

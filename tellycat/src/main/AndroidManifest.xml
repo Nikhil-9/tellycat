@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TellyCat: a small, grumpy animated cat that lives on the TV's home screen and reacts to what you do.
+     Runs as an accessibility service: it sees which app is in front and which remote keys are pressed (keys always
+     pass through untouched). It never reads screen content and has no internet permission. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Glow Home tells the cat where the selected tile is. Signature level: only an app signed with the
+         same key (Glow Home built alongside it) can send these events. -->
+    <permission
+        android:name="com.nikhil.glowcat.permission.HOME_EVENTS"
+        android:protectionLevel="signature" />
+
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+
+    <!-- Android 11+ package visibility: tell real app screens apart from system popups, and find the launcher -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:icon="@drawable/icon"
+        android:label="@string/app_name">
+
+        <service
+            android:name=".CatService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/cat_service" />
+        </service>
+    </application>
+</manifest>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>TellyCat frame renderer</title>
+<style>body{background:#222;color:#ddd;font:14px sans-serif}iframe{width:128px;height:128px;border:0}</style></head>
+<body>
+<div id="log">loading...</div>
+<iframe id="f"></iframe>
+<canvas id="c" width="128" height="128" style="background:#555"></canvas>
+<script>
+// Renders every clip served by frame_server.py: each drawing (CAT_ANIM.frameCount of them) onto a transparent
+// 128x128 canvas, POSTed back as PNG, plus a meta.json with the clip's loop flag and length.
+// Optional: ?only=walk,run to render just some clips.
+const SIZE = 128;
+const ONLY = new URLSearchParams(location.search).get('only');
+const log = m => document.getElementById('log').textContent = m;
+const frame = document.getElementById('f'), canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+
+function loadClip(name) {
+  return new Promise(res => { frame.onload = () => res(frame.contentWindow); frame.src = '/' + name + '.html?paused&v=' + Date.now(); });
+}
+function svgToPng(svgText) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => { ctx.clearRect(0, 0, SIZE, SIZE); ctx.drawImage(img, 0, 0, SIZE, SIZE);
+      canvas.toBlob(b => res(b), 'image/png'); };
+    img.onerror = rej;
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText);
+  });
+}
+async function run() {
+  const all = await (await fetch('/clips.json')).json();
+  const clips = ONLY ? ONLY.split(',') : all;
+  const summary = {};
+  for (const name of clips) {
+    const w = await loadClip(name), A = w.CAT_ANIM;
+    if (!A) { summary[name] = 'no CAT_ANIM'; continue; }
+    const count = A.frameCount || Math.round(A.duration * (A.fps || 12)) + (A.loop ? 0 : 1);
+    for (let i = 0; i < count; i++) {
+      if (A.renderFrameIndex) A.renderFrameIndex(i); else A.renderFrame(Math.min(A.duration, i / (A.fps || 12)));
+      const el = w.document.getElementById('cat');            // the drawn <svg> (or a wrapper around it)
+      const svg = (el.tagName.toLowerCase() === 'svg' ? el : el.querySelector('svg')).outerHTML
+        .replace(/width="[^"]*" height="[^"]*" viewBox/, `width="${SIZE}" height="${SIZE}" viewBox`);
+      await fetch(`/save/${name}/${i}.png`, { method: 'POST', body: await svgToPng(svg) });
+      log(`${name} ${i + 1}/${count}`);
+    }
+    const meta = { frames: count, loop: !!A.loop, duration: A.duration };
+    await fetch(`/save/${name}/meta.json`, { method: 'POST', body: JSON.stringify(meta) });
+    summary[name] = meta;
+  }
+  window.DONE = summary;
+  log('DONE ' + JSON.stringify(summary));
+}
+run().catch(e => { window.DONE = { error: String(e) }; log('ERROR ' + e); });
+</script>
+</body></html>
