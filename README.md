@@ -75,7 +75,7 @@ To turn the cat off, disable it in the accessibility settings or uninstall it (`
 Requirements: JDK 17 and the Android SDK (Android Studio installs both; the command-line tools are enough).
 
 ```bash
-git clone https://github.com/<you>/tellycat.git
+git clone https://github.com/Nikhil-9/tellycat.git
 cd tellycat
 ./gradlew assembleDebug        # gradlew.bat on Windows
 ```
